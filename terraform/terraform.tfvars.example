@@ -1,0 +1,9 @@
+# Cluster configuration
+cluster_name = "sanjay-challenge"
+worker_count = 3
+
+# Challenge namespaces
+challenge_namespaces = ["t2", "t3", "t5", "t6"]
+
+# KIND config path (relative to terraform/ directory)
+kind_config_path = "../kubernetes/kind-config.yaml"
