@@ -22,10 +22,6 @@ Service communication issues in Kubernetes cluster preventing debug client from 
 - `kubectl describe node` - Check node status and conditions
 - `kubectl get nodes` - View cluster node health
 - `docker exec -it <node> bash` - Access Kind node containers
-- `systemctl status kubelet` - Check kubelet service status
-- `journalctl -u kubelet` - View kubelet logs
-- `df -h` - Check disk space usage
-- `ls -lh /var/log/` - Identify large files
 
 ## Root Causes and Confirmation
 
@@ -98,61 +94,6 @@ kubectl describe networkpolicy deny-all-ingress -n t3
 # Similar configuration blocking all ingress to t3 namespace
 ```
 
-### Issue 5: Worker Node NotReady and Unschedulable
-
-**Root Cause:**
-Node `sanjay-challenge-worker2` was in NotReady,SchedulingDisabled state with taints:
-- `node.kubernetes.io/unreachable`
-- `node.kubernetes.io/unschedulable`
-
-**Confirmation:**
-```bash
-kubectl get nodes
-# NAME                           STATUS                     ROLES           AGE
-# sanjay-challenge-worker2       NotReady,SchedulingDisabled <none>         23h
-
-kubectl describe node sanjay-challenge-worker2
-# Conditions:
-#   Ready            False   ...   KubeletNotReady
-# Taints:
-#   node.kubernetes.io/unreachable:NoSchedule
-#   node.kubernetes.io/unschedulable:NoSchedule
-```
-
-### Issue 6: Disk Space Exhausted on Node
-
-**Root Cause:**
-Large file `/var/log/bloat.img` consuming all available disk space.
-
-**Confirmation:**
-```bash
-docker exec -it sanjay-challenge-worker2 bash
-df -h
-# Filesystem      Size  Used Avail Use% Mounted on
-# /dev/vda1       100G  100G    0G 100% /
-
-ls -lh /var/log/
-# -rw-r--r-- 1 root root 95G Apr 17 12:00 bloat.img
-```
-
-### Issue 7: Missing Kubelet Client Certificate
-
-**Root Cause:**
-Kubelet client certificate was backed up but original file was missing.
-
-**Confirmation:**
-```bash
-docker exec -it sanjay-challenge-worker2 bash
-ls -la /var/lib/kubelet/pki/
-# kubelet-client-current.pem.bak exists
-# kubelet-client-current.pem missing
-
-systemctl status kubelet
-# Failed to load certificates
-
-journalctl -u kubelet | grep -i certificate
-# Error: unable to load client certificate
-```
 
 ## Fixes Applied
 
@@ -205,41 +146,9 @@ kubectl delete networkpolicy deny-all-egress -n default
 kubectl delete networkpolicy deny-all-ingress -n t3
 ```
 
-### Fix 5: Freed Disk Space on Node
 
-**Accessed node and removed bloat file:**
-```bash
-docker exec -it sanjay-challenge-worker2 bash
-rm -f /var/log/bloat.img
-```
 
-**Verified space recovery:**
-```bash
-df -h
-# Filesystem      Size  Used Avail Use% Mounted on
-# /dev/vda1       100G   5G   95G   5% /
-```
 
-### Fix 6: Restored Kubelet Certificate
-
-**Restored certificate from backup:**
-```bash
-docker exec -it sanjay-challenge-worker2 bash
-mv /var/lib/kubelet/pki/kubelet-client-current.pem.bak \
-   /var/lib/kubelet/pki/kubelet-client-current.pem
-```
-
-**Restarted kubelet service:**
-```bash
-systemctl restart kubelet
-```
-
-### Fix 7: Uncordoned Node
-
-**Made node schedulable again:**
-```bash
-kubectl uncordon sanjay-challenge-worker2
-```
 
 ## Verification Steps
 
@@ -280,43 +189,9 @@ kubectl get networkpolicy -n t3
 # No resources found in t3 namespace.
 ```
 
-### 5. Verified Node Health
-```bash
-kubectl get nodes
-# NAME                           STATUS   ROLES           AGE
-# sanjay-challenge-worker2       Ready    <none>          23h
-# All nodes Ready and schedulable
 
-kubectl describe node sanjay-challenge-worker2 | grep Condition -A10
-# Conditions:
-#   Ready            True    KubeletReady
-#   DiskPressure     False
-```
 
-### 6. Verified Disk Space
-```bash
-docker exec -it sanjay-challenge-worker2 df -h
-# Filesystem      Size  Used Avail Use% Mounted on
-# /dev/vda1       100G   5G   95G   5% /
-# Healthy disk usage
-```
 
-### 7. Verified Kubelet Status
-```bash
-docker exec -it sanjay-challenge-worker2 systemctl status kubelet
-# Active: active (running)
-# No certificate errors in logs
-```
-
-### 8. End-to-End Connectivity Test
-```bash
-kubectl exec -it debug-client -n default -- sh -c '
-  for i in $(seq 1 10); do
-    curl -s -o /dev/null -w "%{http_code}\n" http://task-3.t3.svc.cluster.local
-  done
-'
-# All requests return 200
-```
 
 ## Summary
 
@@ -325,8 +200,4 @@ All network connectivity and node issues were successfully resolved:
 - ✅ CoreDNS restored with malicious rewrite rule removed
 - ✅ Egress network policy deleted from default namespace
 - ✅ Ingress network policy deleted from t3 namespace
-- ✅ Node disk space freed by removing bloat file
-- ✅ Kubelet certificate restored from backup
-- ✅ Node returned to Ready state and made schedulable
-- ✅ Full network connectivity restored between namespaces
 - ✅ DNS resolution working correctly for cluster services
