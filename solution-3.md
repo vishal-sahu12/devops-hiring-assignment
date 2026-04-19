@@ -8,9 +8,7 @@ Service communication issues in Kubernetes cluster preventing debug client from 
 2. **DNS resolution failures** - Could not resolve service hostname `task-3.t3.svc.cluster.local`
 3. **Network policy blocking egress** - All outbound traffic blocked from default namespace
 4. **Network policy blocking ingress** - All inbound traffic blocked to t3 namespace
-5. **Worker node down** - Node in NotReady state with SchedulingDisabled
-6. **Disk space exhaustion** - Node filesystem full preventing kubelet operation
-7. **Broken kubelet certificates** - Missing client certificate file
+
 
 ## Tools Used to Investigate
 
